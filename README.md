@@ -12,16 +12,6 @@ Instead of just reading code or relying on standard chat interfaces, Cicerone ge
 - **Background Generation:** Queue up multiple tours at once. Cicerone generates them in the background without blocking your current flow.
 - **Agent Backend Abstraction:** Seamlessly use generic `acp` backends (`kiro-cli acp`, `pi-acp`) or fall back to direct `pi-rpc` connections. Top-level tours get fresh sessions, while tangents reuse their parent's context.
 
-## Project Structure
-
-- `src/types.ts` — shared tour/step types
-- `src/backend/types.ts` — backend abstraction for agent integrations
-- `src/backend/acpBackend.ts` — generic ACP backend implementation for pi-acp, kiro-cli, and other ACP-compatible agents
-- `src/backend/piRpcBackend.ts` — direct pi RPC backend implementation
-- `src/tourStackManager.ts` — LIFO tour stack manager for roots and tangents
-- `src/commentTourController.ts` — comment thread + decorations UI
-- `src/extension.ts` — command wiring and application state
-
 ## Prerequisites
 
 - Node.js 20+ recommended
