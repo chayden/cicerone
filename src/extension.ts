@@ -8,7 +8,7 @@ import { TourBackend, TourBackendSession } from './backend/types';
 import { CommentTourController } from './commentTourController';
 import { TourOutlineProvider } from './tourOutlineProvider';
 import { TourStackManager } from './tourStackManager';
-import { CiceroneStep } from './types';
+import { CiceroneSavedNoteContext, CiceroneStep } from './types';
 
 const tourStack = new TourStackManager();
 const commentController = new CommentTourController();
@@ -17,9 +17,12 @@ const DEFAULT_PI_MODEL = 'google-antigravity/gemini-3-flash';
 const DEFAULT_KIRO_MODEL = 'claude-haiku-4.5';
 
 let backend: TourBackend;
-let backendSession: TourBackendSession | undefined;
+const backendSessions = new Map<string, TourBackendSession>();
 let backendLabel = 'pi-acp';
 let sidebarQuestionDraft = '';
+let sidebarNotes = '';
+let sidebarSummary = '';
+let isGeneratingSummary = false;
 let isTourVisible = true;
 let currentModelSetting = '';
 let currentBackendChoice = 'pi-acp';
@@ -32,6 +35,8 @@ let modelRefreshRequestId = 0;
 export function activate(context: vscode.ExtensionContext): void {
   workspaceState = context.workspaceState;
   sidebarQuestionDraft = workspaceState.get<string>('cicerone.sidebarQuestionDraft', '');
+  sidebarNotes = workspaceState.get<string>('cicerone.sidebarNotes', '');
+  sidebarSummary = workspaceState.get<string>('cicerone.sidebarSummary', '');
   context.subscriptions.push(commentController, outputChannel);
   outputChannel.appendLine('[Cicerone] Extension activated');
   backend = createBackend();
@@ -52,8 +57,9 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      await setSidebarQuestionDraft(question.trim());
-      await startTour(question.trim(), { reuseSession: false });
+      await setSidebarQuestionDraft('');
+      syncTourOutline();
+      void startTour(question.trim(), { reuseSession: false });
     }),
 
     vscode.commands.registerCommand('cicerone.askTourWithQuestion', async (question: string) => {
@@ -61,13 +67,136 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      setSidebarQuestionDraft(question.trim());
-      await startTour(question.trim(), { reuseSession: false });
+      await setSidebarQuestionDraft('');
+      syncTourOutline();
+      void startTour(question.trim(), { reuseSession: false });
     }),
 
     vscode.commands.registerCommand('cicerone.setSidebarQuestionDraft', async (question: string) => {
       sidebarQuestionDraft = question;
       await workspaceState.update('cicerone.sidebarQuestionDraft', question);
+    }),
+
+    vscode.commands.registerCommand('cicerone.setSidebarNotes', async (notes: string) => {
+      sidebarNotes = notes;
+      await workspaceState.update('cicerone.sidebarNotes', notes);
+      syncTourOutline();
+    }),
+
+    vscode.commands.registerCommand('cicerone.setReplyModeTangent', async (threadKey: string) => {
+      commentController.setReplyMode(threadKey, 'tangent');
+      await renderActiveStep(tourStack.getActiveStep());
+    }),
+
+    vscode.commands.registerCommand('cicerone.setReplyModeNote', async (threadKey: string) => {
+      commentController.setReplyMode(threadKey, 'note');
+      await renderActiveStep(tourStack.getActiveStep());
+    }),
+
+    vscode.commands.registerCommand('cicerone.setReplyModeHidden', async (threadKey: string) => {
+      commentController.setReplyMode(threadKey, 'hidden');
+      await renderActiveStep(tourStack.getActiveStep());
+    }),
+
+    vscode.commands.registerCommand('cicerone.copyTourNotes', async () => {
+      await vscode.env.clipboard.writeText(sidebarNotes);
+      vscode.window.showInformationMessage(sidebarNotes.trim() ? 'Cicerone notes copied.' : 'Cicerone notes are empty, but copied.');
+    }),
+
+    vscode.commands.registerCommand('cicerone.createSummary', async () => {
+      if (tourStack.getStackDepth() === 0 && !sidebarNotes.trim()) {
+        vscode.window.showInformationMessage('No active tours or notes to summarize.');
+        return;
+      }
+
+      const activeTour = tourStack.getActiveTour();
+      const workspaceRoot = activeTour
+        ? getWorkspaceRoot(vscode.window.activeTextEditor?.document.uri)
+        : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+      if (!workspaceRoot) {
+        vscode.window.showErrorMessage('Could not determine a workspace root to generate summary.');
+        return;
+      }
+
+      isGeneratingSummary = true;
+      syncTourOutline();
+
+      try {
+        const session = activeTour
+          ? await getSessionForRootTourId(activeTour.rootTourId, workspaceRoot)
+          : await backend.createSession(workspaceRoot); // Fallback one-off session if no active tour
+
+        const formattedTours = tourStack.getTours().map((t, i) => {
+          let str = `Tour ${i + 1}: ${t.topic}\n`;
+          if (t.question) str += `Question: ${t.question}\n`;
+          if (t.answerSummary) str += `Summary: ${t.answerSummary}\n`;
+          t.steps.forEach((s, j) => {
+            str += `  Step ${j + 1}: ${path.basename(s.file)}:${s.line} - ${s.title}\n`;
+            str += `  ${s.explanation}\n`;
+          });
+          return str;
+        }).join('\n\n');
+
+        const prompt = `You are an expert developer assistant summarizing a codebase exploration session.
+The user has taken a series of code tours and written some personal notes.
+
+<user_notes>
+${sidebarNotes || "(No notes provided)"}
+</user_notes>
+
+<tours>
+${formattedTours || "(No tours provided)"}
+</tours>
+
+Create a clean, well-formatted Markdown summary of the key information learned during this session.
+Make the user's personal notes VERY prominent in the summary, expanding on them using the context from the tours if appropriate.
+Synthesize the tour steps into a cohesive overview rather than just listing them line-by-line.
+Do not output JSON, just output the markdown summary directly.`;
+
+        outputChannel.appendLine(`[Cicerone] createSummary requested`);
+        const result = await session.generateText(prompt);
+
+        if (!activeTour) {
+          // Dispose the temporary fallback session
+          await session.dispose();
+        }
+
+        sidebarSummary = result.trim();
+        await workspaceState.update('cicerone.sidebarSummary', sidebarSummary);
+        vscode.window.showInformationMessage('Cicerone summary generated successfully.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        outputChannel.appendLine(`[Cicerone] createSummary error=${message}`);
+        vscode.window.showErrorMessage(`Cicerone could not generate summary: ${message}`);
+      } finally {
+        isGeneratingSummary = false;
+        syncTourOutline();
+      }
+    }),
+
+    vscode.commands.registerCommand('cicerone.setSidebarSummary', async (summary: string) => {
+      sidebarSummary = summary;
+      await workspaceState.update('cicerone.sidebarSummary', summary);
+    }),
+
+    vscode.commands.registerCommand('cicerone.clearSummary', async () => {
+      sidebarSummary = '';
+      await workspaceState.update('cicerone.sidebarSummary', '');
+      syncTourOutline();
+    }),
+
+    vscode.commands.registerCommand('cicerone.copySummary', async () => {
+      await vscode.env.clipboard.writeText(sidebarSummary);
+      vscode.window.showInformationMessage('Cicerone summary copied.');
+    }),
+
+    vscode.commands.registerCommand('cicerone.addTourNote', async (context: CiceroneSavedNoteContext) => {
+      const entry = formatSavedNote(context);
+      sidebarNotes = sidebarNotes.trim() ? `${sidebarNotes.trim()}\n\n${entry}` : entry;
+      await workspaceState.update('cicerone.sidebarNotes', sidebarNotes);
+      syncTourOutline();
+      vscode.window.showInformationMessage('Added note to Cicerone sidebar notes.');
     }),
 
     vscode.commands.registerCommand('cicerone.setBackendChoice', async (choice: string) => {
@@ -94,7 +223,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       availableModels = [];
-      await disposeBackendSession();
+      await disposeAllBackendSessions();
       backend = createBackend();
       syncTourOutline();
       await refreshAvailableModels();
@@ -111,7 +240,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await configuration.update('model', model, vscode.ConfigurationTarget.Global);
       currentModelSetting = model;
       outputChannel.appendLine(`[Cicerone] Model changed to ${model}. Will take effect on next session.`);
-      await disposeBackendSession();
+      await disposeAllBackendSessions();
       syncTourOutline();
     }),
 
@@ -121,12 +250,33 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     vscode.commands.registerCommand('cicerone.replyInTour', async (reply: vscode.CommentReply) => {
-      const question = reply.text.trim();
-      if (!question) {
-        vscode.window.showWarningMessage('Enter a follow-up question in the comment box first.');
+      const rawInput = reply.text.trim();
+      if (!rawInput) {
+        vscode.window.showWarningMessage('Enter a follow-up question or note in the comment box first.');
         return;
       }
 
+      const activeStep = tourStack.getActiveStep();
+      const activeTour = tourStack.getActiveTour();
+      const threadKey = commentController.getThreadKeyFromReply(reply.thread);
+      const replyMode = commentController.getReplyMode(threadKey);
+      const noteContext = buildReplyNoteContext(reply, activeTour, activeStep);
+      if (replyMode === 'note') {
+        if (!noteContext) {
+          vscode.window.showWarningMessage('No active tour step is available to attach a note.');
+          return;
+        }
+
+        await vscode.commands.executeCommand('cicerone.addTourNote', {
+          ...noteContext,
+          userNote: rawInput
+        } satisfies CiceroneSavedNoteContext);
+        commentController.setReplyMode(threadKey, 'hidden');
+        await renderActiveStep(tourStack.getActiveStep());
+        return;
+      }
+
+      const question = rawInput;
       const workspaceRoot = getWorkspaceRoot(reply.thread.uri) || getWorkspaceRoot(vscode.window.activeTextEditor?.document.uri);
       if (!workspaceRoot) {
         vscode.window.showErrorMessage('Could not determine a workspace root for the follow-up question.');
@@ -135,47 +285,54 @@ export function activate(context: vscode.ExtensionContext): void {
 
       try {
         outputChannel.appendLine(`[Cicerone] replyInTour question=${question}`);
-        const rawResponse = await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: `Cicerone is asking ${backendLabel} for a tangent tour…`,
-            cancellable: false
-          },
-          async () => {
-            const session = await getBackendSession(workspaceRoot, true);
-            const activeStep = tourStack.getActiveStep();
-            return await session.generateTour({
-              question,
-              cwd: workspaceRoot,
-              activeFile: reply.thread.uri.fsPath,
-              activeStep: activeStep ? {
-                file: activeStep.file,
-                line: activeStep.line,
-                title: activeStep.title,
-                explanation: activeStep.explanation
-              } : undefined
-            });
-          }
-        );
+        if (!activeTour) {
+          throw new Error('No active tour is available to attach a tangent.');
+        }
+
+        const pendingTour = tourStack.createPendingTangent(question);
+        if (!pendingTour) {
+          throw new Error('Could not create pending tangent tour.');
+        }
+        const navigationVersion = tourStack.getInteractionVersion();
+        syncTourOutline();
+
+        const session = await getSessionForRootTourId(activeTour.rootTourId, workspaceRoot);
+        const rawResponse = await session.generateTour({
+          question,
+          cwd: workspaceRoot,
+          activeFile: reply.thread.uri.fsPath,
+          activeStep: activeStep ? {
+            file: activeStep.file,
+            line: activeStep.line,
+            title: activeStep.title,
+            explanation: activeStep.explanation
+          } : undefined
+        });
 
         const response = { ...rawResponse, steps: resolveStepLocations(rawResponse.steps, message => outputChannel.appendLine(message)) };
+        tourStack.completePendingTour(pendingTour.id, response.topic, response.steps, {
+          question,
+          answerSummary: response.answerSummary
+        });
 
-        const activeTour = tourStack.getActiveTour();
-        const tour = activeTour
-          ? tourStack.startTangent(response.topic, response.steps, {
-              question,
-              answerSummary: response.answerSummary
-            })
-          : tourStack.initializeTour(response.topic, response.steps, {
-              question,
-              answerSummary: response.answerSummary
-            });
-
-        await renderActiveStep(tour.steps[tour.currentStepIndex]);
+        commentController.setReplyMode(threadKey, 'hidden');
         syncTourOutline();
-        vscode.window.showInformationMessage(`Started Cicerone tangent: ${tour.topic}`);
+        if (tourStack.getInteractionVersion() === navigationVersion) {
+          const tour = tourStack.activateTourById(pendingTour.id);
+          if (tour) {
+            await renderActiveStep(tour.steps[tour.currentStepIndex]);
+          }
+        }
+        vscode.window.showInformationMessage(`Started Cicerone tangent: ${response.topic}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (activeTour) {
+          const pending = tourStack.getTours().find(tour => tour.status === 'loading' && tour.parentTourId === activeTour.id && tour.question === question);
+          if (pending) {
+            tourStack.failPendingTour(pending.id, message);
+            syncTourOutline();
+          }
+        }
         outputChannel.appendLine(`[Cicerone] replyInTour error=${message}`);
         outputChannel.show(true);
         vscode.window.showErrorMessage(`Cicerone could not generate a tangent tour: ${message}`);
@@ -263,7 +420,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       if (!result.activeTour) {
-        await disposeBackendSession();
+        await disposeSessionFamily(result.discarded.rootTourId);
         commentController.clear();
         syncTourOutline();
         vscode.window.showInformationMessage('Cicerone tour discarded.');
@@ -282,11 +439,14 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     vscode.commands.registerCommand('cicerone.exitTour', async () => {
+      const previousTour = tourStack.getActiveTour();
       tourStack.concludeJourney();
       const activeTour = tourStack.getActiveTour();
 
       if (!activeTour) {
-        await disposeBackendSession();
+        if (previousTour) {
+          await disposeSessionFamily(previousTour.rootTourId);
+        }
         commentController.clear();
         syncTourOutline();
         vscode.window.showInformationMessage('Cicerone tour ended.');
@@ -300,7 +460,7 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export async function deactivate(): Promise<void> {
-  await disposeBackendSession();
+  await disposeAllBackendSessions();
   commentController.dispose();
 }
 
@@ -333,7 +493,10 @@ function syncTourOutline(): void {
     tourStack.getTours(),
     backendLabel,
     sidebarQuestionDraft,
-    backendSession !== undefined,
+    sidebarNotes,
+    sidebarSummary,
+    isGeneratingSummary,
+    backendSessions.size > 0,
     supportsModelSelection ? currentModelSetting : '',
     supportsModelSelection ? availableModels : [],
     isTourVisible,
@@ -374,7 +537,7 @@ function createBackend(): TourBackend {
   return acpBackend;
 }
 
-async function startTour(question: string, options: { reuseSession: boolean }): Promise<void> {
+async function startTour(question: string, _options: { reuseSession: boolean }): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   const workspaceRoot = getWorkspaceRoot(editor?.document.uri);
   if (!workspaceRoot) {
@@ -382,68 +545,121 @@ async function startTour(question: string, options: { reuseSession: boolean }): 
     return;
   }
 
+  const pendingTour = tourStack.createPendingRoot(question);
+  const navigationVersion = tourStack.getInteractionVersion();
+  syncTourOutline();
+
   try {
     outputChannel.appendLine(`[Cicerone] askTour question=${question}`);
-    const rawResponse = await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Cicerone is asking ${backendLabel} for a code tour…`,
-        cancellable: false
-      },
-      async () => {
-        const session = await getBackendSession(workspaceRoot, options.reuseSession);
-        return await session.generateTour({
-          question,
-          cwd: workspaceRoot,
-          activeFile: editor?.document.uri.fsPath,
-          selectedText:
-            editor?.selection && !editor.selection.isEmpty ? editor.document.getText(editor.selection).slice(0, 4000) : undefined
-        });
-      }
-    );
+    const session = await createSessionForRootTourId(pendingTour.rootTourId, workspaceRoot);
+    const rawResponse = await session.generateTour({
+      question,
+      cwd: workspaceRoot,
+      activeFile: editor?.document.uri.fsPath,
+      selectedText:
+        editor?.selection && !editor.selection.isEmpty ? editor.document.getText(editor.selection).slice(0, 4000) : undefined
+    });
 
     const response = { ...rawResponse, steps: resolveStepLocations(rawResponse.steps, message => outputChannel.appendLine(message)) };
-
-    const tour = tourStack.initializeTour(response.topic, response.steps, {
+    tourStack.completePendingTour(pendingTour.id, response.topic, response.steps, {
       question,
       answerSummary: response.answerSummary
     });
 
-    await renderActiveStep(tourStack.getActiveStep());
     syncTourOutline();
-    vscode.window.showInformationMessage(`Started Cicerone tour: ${tour.topic}`);
+    if (tourStack.getInteractionVersion() === navigationVersion) {
+      const tour = tourStack.activateTourById(pendingTour.id);
+      if (tour) {
+        await renderActiveStep(tour.steps[tour.currentStepIndex]);
+      }
+    }
+    vscode.window.showInformationMessage(`Started Cicerone tour: ${response.topic}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    tourStack.failPendingTour(pendingTour.id, message);
+    await disposeSessionFamily(pendingTour.rootTourId);
+    syncTourOutline();
     outputChannel.appendLine(`[Cicerone] askTour error=${message}`);
     outputChannel.show(true);
     vscode.window.showErrorMessage(`Cicerone could not generate a ${backendLabel} tour: ${message}`);
   }
 }
 
-async function getBackendSession(cwd: string, reuseExisting: boolean): Promise<TourBackendSession> {
-  if (!reuseExisting && backendSession) {
-    await disposeBackendSession();
-  }
-
-  if (!backendSession) {
-    backendSession = await backend.createSession(cwd);
-  }
-
-  return backendSession;
+async function createSessionForRootTourId(rootTourId: string, cwd: string): Promise<TourBackendSession> {
+  const session = await backend.createSession(cwd);
+  backendSessions.set(rootTourId, session);
+  return session;
 }
 
-async function disposeBackendSession(): Promise<void> {
-  if (!backendSession) {
+async function getSessionForRootTourId(rootTourId: string, cwd: string): Promise<TourBackendSession> {
+  const existing = backendSessions.get(rootTourId);
+  if (existing) {
+    return existing;
+  }
+
+  return await createSessionForRootTourId(rootTourId, cwd);
+}
+
+async function disposeSessionFamily(rootTourId: string): Promise<void> {
+  const session = backendSessions.get(rootTourId);
+  if (!session) {
     return;
   }
 
-  await backendSession.dispose();
-  backendSession = undefined;
+  await session.dispose();
+  backendSessions.delete(rootTourId);
+}
+
+async function disposeAllBackendSessions(): Promise<void> {
+  const sessions = Array.from(backendSessions.values());
+  backendSessions.clear();
+  await Promise.allSettled(sessions.map(session => Promise.resolve(session.dispose())));
 }
 
 async function setSidebarQuestionDraft(question: string): Promise<void> {
   sidebarQuestionDraft = question;
   await workspaceState.update('cicerone.sidebarQuestionDraft', question);
+}
+
+
+function buildReplyNoteContext(
+  reply: vscode.CommentReply,
+  activeTour: { topic: string } | undefined,
+  activeStep: CiceroneStep | undefined
+): Omit<CiceroneSavedNoteContext, 'userNote'> | undefined {
+  if (!activeTour || !activeStep) {
+    return undefined;
+  }
+
+  const replyLine = reply.thread.range?.start.line !== undefined ? reply.thread.range.start.line + 1 : activeStep.line;
+  const matchingHighlight = activeStep.extraHighlights?.find(highlight => highlight.line === replyLine);
+
+  return {
+    topic: activeTour.topic,
+    file: reply.thread.uri.fsPath,
+    line: matchingHighlight?.line ?? activeStep.line,
+    anchor: matchingHighlight?.anchor ?? activeStep.anchor,
+    title: matchingHighlight ? `Related highlight — ${activeStep.title}` : activeStep.title,
+    explanation: matchingHighlight?.note ?? activeStep.explanation
+  };
+}
+
+function formatSavedNote(context: CiceroneSavedNoteContext): string {
+  const location = `${relativizeFilePath(context.file)}:${context.line}${context.anchor ? ` · ${context.anchor}` : ''}`;
+  return [
+    `- [${context.topic}] ${location}`,
+    `  Tour note: ${context.explanation}`,
+    `  My note: ${context.userNote}`
+  ].join('\n');
+}
+
+function relativizeFilePath(file: string): string {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.find(folder => file.startsWith(folder.uri.fsPath));
+  if (!workspaceFolder) {
+    return file;
+  }
+
+  return path.relative(workspaceFolder.uri.fsPath, file) || path.basename(file);
 }
 
 async function refreshAvailableModels(): Promise<void> {

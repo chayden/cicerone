@@ -8,20 +8,57 @@ interface TourMetadata {
 export class TourStackManager {
   private readonly stack: CiceroneTour[] = [];
   private activeIndex = -1;
+  private interactionVersion = 0;
 
-  initializeTour(topic: string, steps: CiceroneStep[], metadata?: TourMetadata): CiceroneTour {
-    const tour = this.createTour(topic, steps, metadata);
-    this.stack.length = 0;
+  createPendingRoot(question: string): CiceroneTour {
+    const topic = abbreviateQuestion(question);
+    const tour = this.createTour(topic, [], { question });
+    tour.status = 'loading';
+    tour.rootTourId = tour.id;
     this.stack.push(tour);
-    this.activeIndex = 0;
     return tour;
   }
 
-  startTangent(topic: string, steps: CiceroneStep[], metadata?: TourMetadata): CiceroneTour {
-    const tangent = this.createTour(topic, steps, metadata);
+  createPendingTangent(question: string): CiceroneTour | undefined {
+    const activeTour = this.getActiveTour();
+    if (!activeTour) {
+      return undefined;
+    }
+
+    const tangent = this.createTour(abbreviateQuestion(question), [], { question });
+    tangent.status = 'loading';
+    tangent.parentTourId = activeTour.id;
+    tangent.rootTourId = activeTour.rootTourId;
     this.stack.push(tangent);
-    this.activeIndex = this.stack.length - 1;
     return tangent;
+  }
+
+  completePendingTour(id: string, topic: string, steps: CiceroneStep[], metadata?: TourMetadata): CiceroneTour | undefined {
+    const tour = this.stack.find(item => item.id === id);
+    if (!tour) {
+      return undefined;
+    }
+
+    tour.topic = topic;
+    tour.steps = steps;
+    tour.currentStepIndex = 0;
+    tour.status = 'ready';
+    tour.answerSummary = metadata?.answerSummary;
+    tour.question = metadata?.question ?? tour.question;
+    tour.errorMessage = undefined;
+    return tour;
+  }
+
+  failPendingTour(id: string, message: string): CiceroneTour | undefined {
+    const tour = this.stack.find(item => item.id === id);
+    if (!tour) {
+      return undefined;
+    }
+
+    tour.status = 'error';
+    tour.errorMessage = message;
+    tour.topic = `${tour.topic} (failed)`;
+    return tour;
   }
 
   concludeJourney(): CiceroneTour | undefined {
@@ -29,7 +66,14 @@ export class TourStackManager {
       return undefined;
     }
 
-    this.stack.splice(this.activeIndex, 1);
+    const activeTour = this.stack[this.activeIndex];
+    if (!activeTour.parentTourId) {
+      this.removeRootFamilyAt(this.activeIndex);
+    } else {
+      this.stack.splice(this.activeIndex, 1);
+    }
+
+    this.interactionVersion += 1;
     if (this.stack.length === 0) {
       this.activeIndex = -1;
       return undefined;
@@ -49,7 +93,7 @@ export class TourStackManager {
 
   getActiveStep(): CiceroneStep | undefined {
     const activeTour = this.getActiveTour();
-    if (!activeTour) {
+    if (!activeTour || activeTour.status !== 'ready') {
       return undefined;
     }
 
@@ -58,7 +102,7 @@ export class TourStackManager {
 
   moveToStep(index: number): CiceroneStep | undefined {
     const activeTour = this.getActiveTour();
-    if (!activeTour) {
+    if (!activeTour || activeTour.status !== 'ready') {
       return undefined;
     }
 
@@ -67,12 +111,13 @@ export class TourStackManager {
     }
 
     activeTour.currentStepIndex = index;
+    this.interactionVersion += 1;
     return activeTour.steps[index];
   }
 
   nextStep(): CiceroneStep | undefined {
     const activeTour = this.getActiveTour();
-    if (!activeTour) {
+    if (!activeTour || activeTour.status !== 'ready') {
       return undefined;
     }
 
@@ -82,12 +127,13 @@ export class TourStackManager {
     }
 
     activeTour.currentStepIndex = nextIndex;
+    this.interactionVersion += 1;
     return activeTour.steps[nextIndex];
   }
 
   previousStep(): CiceroneStep | undefined {
     const activeTour = this.getActiveTour();
-    if (!activeTour) {
+    if (!activeTour || activeTour.status !== 'ready') {
       return undefined;
     }
 
@@ -97,6 +143,7 @@ export class TourStackManager {
     }
 
     activeTour.currentStepIndex = previousIndex;
+    this.interactionVersion += 1;
     return activeTour.steps[previousIndex];
   }
 
@@ -112,6 +159,10 @@ export class TourStackManager {
     return this.stack;
   }
 
+  getInteractionVersion(): number {
+    return this.interactionVersion;
+  }
+
   setAnnotationMode(mode: CiceroneAnnotationMode): CiceroneTour | undefined {
     const activeTour = this.getActiveTour();
     if (!activeTour) {
@@ -119,6 +170,7 @@ export class TourStackManager {
     }
 
     activeTour.annotationMode = mode;
+    this.interactionVersion += 1;
     return activeTour;
   }
 
@@ -129,6 +181,7 @@ export class TourStackManager {
     }
 
     activeTour.annotationMode = activeTour.annotationMode === 'terse' ? 'detailed' : 'terse';
+    this.interactionVersion += 1;
     return activeTour;
   }
 
@@ -137,57 +190,104 @@ export class TourStackManager {
       return undefined;
     }
 
+    if (this.stack[index].status !== 'ready') {
+      return undefined;
+    }
+
     this.activeIndex = index;
+    this.interactionVersion += 1;
     return this.stack[index];
   }
 
-  nextTour(): CiceroneTour | undefined {
-    if (this.stack.length <= 1 || this.activeIndex >= this.stack.length - 1) {
+  activateTourById(id: string): CiceroneTour | undefined {
+    const index = this.stack.findIndex(tour => tour.id === id);
+    if (index === -1) {
       return undefined;
     }
+    return this.activateTourAt(index);
+  }
 
-    this.activeIndex += 1;
-    return this.getActiveTour();
+  nextTour(): CiceroneTour | undefined {
+    for (let index = this.activeIndex + 1; index < this.stack.length; index++) {
+      if (this.stack[index].status === 'ready') {
+        this.activeIndex = index;
+        this.interactionVersion += 1;
+        return this.stack[index];
+      }
+    }
+    return undefined;
   }
 
   previousTour(): CiceroneTour | undefined {
-    if (this.stack.length <= 1 || this.activeIndex <= 0) {
-      return undefined;
+    for (let index = this.activeIndex - 1; index >= 0; index--) {
+      if (this.stack[index].status === 'ready') {
+        this.activeIndex = index;
+        this.interactionVersion += 1;
+        return this.stack[index];
+      }
     }
-
-    this.activeIndex -= 1;
-    return this.getActiveTour();
+    return undefined;
   }
 
-  discardTourAt(index: number): { discarded: CiceroneTour; activeTour?: CiceroneTour } | undefined {
+  discardTourAt(index: number): { discarded: CiceroneTour; activeTour?: CiceroneTour; discardedIds: string[] } | undefined {
     if (index < 0 || index >= this.stack.length) {
       return undefined;
     }
 
-    const [discarded] = this.stack.splice(index, 1);
+    const discarded = this.stack[index];
+    const discardedIds = !discarded.parentTourId
+      ? this.removeRootFamilyAt(index)
+      : [this.stack.splice(index, 1)[0].id];
+
     if (this.stack.length === 0) {
       this.activeIndex = -1;
-      return { discarded, activeTour: undefined };
+      this.interactionVersion += 1;
+      return { discarded, activeTour: undefined, discardedIds };
     }
 
     if (index < this.activeIndex) {
-      this.activeIndex -= 1;
+      this.activeIndex = Math.max(0, this.activeIndex - discardedIds.length);
     } else if (index === this.activeIndex) {
       this.activeIndex = Math.max(0, Math.min(index - 1, this.stack.length - 1));
     }
 
-    return { discarded, activeTour: this.getActiveTour() };
+    this.interactionVersion += 1;
+    return { discarded, activeTour: this.getActiveTour(), discardedIds };
+  }
+
+  private removeRootFamilyAt(index: number): string[] {
+    const root = this.stack[index];
+    const rootId = root.id;
+    const removedIds: string[] = [];
+
+    for (let i = this.stack.length - 1; i >= 0; i--) {
+      const tour = this.stack[i];
+      if (tour.id === rootId || tour.rootTourId === rootId) {
+        removedIds.push(tour.id);
+        this.stack.splice(i, 1);
+      }
+    }
+
+    return removedIds;
   }
 
   private createTour(topic: string, steps: CiceroneStep[], metadata?: TourMetadata): CiceroneTour {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id,
       topic,
       steps,
       currentStepIndex: 0,
       annotationMode: 'terse',
+      status: 'ready',
+      rootTourId: id,
       question: metadata?.question,
       answerSummary: metadata?.answerSummary
     };
   }
+}
+
+function abbreviateQuestion(question: string): string {
+  const trimmed = question.trim();
+  return trimmed.length > 48 ? `${trimmed.slice(0, 45)}…` : trimmed;
 }
