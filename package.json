@@ -1,0 +1,207 @@
+{
+  "name": "cicerone",
+  "displayName": "Cicerone",
+  "description": "AI-powered collaborative code tours for VS Code.",
+  "version": "0.0.1",
+  "publisher": "chayden",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:cicerone.startDemoTour",
+    "onCommand:cicerone.askPiTour",
+    "onCommand:cicerone.replyInTour",
+    "onCommand:cicerone.goToStep",
+    "onCommand:cicerone.activateTourAt",
+    "onCommand:cicerone.discardTourAt",
+    "onCommand:cicerone.discardCurrentTour",
+    "onCommand:cicerone.toggleAnnotationMode",
+    "onCommand:cicerone.nextStep",
+    "onCommand:cicerone.previousStep",
+    "onCommand:cicerone.nextTour",
+    "onCommand:cicerone.previousTour",
+    "onCommand:cicerone.exitTour",
+    "onView:cicerone.sidebar"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Cicerone",
+      "properties": {
+        "cicerone.backend": {
+          "type": "string",
+          "enum": ["acp", "pi-rpc", "pi-acp"],
+          "default": "acp",
+          "description": "Backend used for generating tours. acp talks to any ACP-compatible CLI (pi-acp, kiro-cli, etc.); pi-rpc talks directly to pi RPC. 'pi-acp' is kept as a legacy alias for 'acp'."
+        },
+        "cicerone.acpCommand": {
+          "type": "string",
+          "default": "pi-acp",
+          "description": "Command used to launch an ACP-compatible agent CLI, such as pi-acp or kiro-cli."
+        },
+        "cicerone.piAcpCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Deprecated alias for cicerone.acpCommand. If set, it is used when cicerone.acpCommand is empty."
+        },
+        "cicerone.model": {
+          "type": "string",
+          "default": "google-antigravity/gemini-3-flash",
+          "description": "Model to use for tour generation, in provider/model-id format (e.g. google-antigravity/gemini-3-flash, anthropic/claude-sonnet-4-20250514). Leave empty to use pi's default model."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "cicerone.startDemoTour",
+        "title": "Cicerone: Start Demo Tour"
+      },
+      {
+        "command": "cicerone.askPiTour",
+        "title": "Cicerone: Ask pi for Code Tour"
+      },
+      {
+        "command": "cicerone.replyInTour",
+        "title": "Cicerone: Ask Follow-up Tour"
+      },
+      {
+        "command": "cicerone.goToStep",
+        "title": "Cicerone: Go to Step"
+      },
+      {
+        "command": "cicerone.activateTourAt",
+        "title": "Cicerone: Activate Tour in Stack"
+      },
+      {
+        "command": "cicerone.discardTourAt",
+        "title": "Cicerone: Discard Tour in Stack"
+      },
+      {
+        "command": "cicerone.discardCurrentTour",
+        "title": "Cicerone: Discard Current Tour"
+      },
+      {
+        "command": "cicerone.toggleAnnotationMode",
+        "title": "Cicerone: Toggle Annotation Detail"
+      },
+      {
+        "command": "cicerone.nextStep",
+        "title": "Cicerone: Next Step"
+      },
+      {
+        "command": "cicerone.previousStep",
+        "title": "Cicerone: Previous Step"
+      },
+      {
+        "command": "cicerone.nextTour",
+        "title": "Cicerone: Next Tour"
+      },
+      {
+        "command": "cicerone.previousTour",
+        "title": "Cicerone: Previous Tour"
+      },
+      {
+        "command": "cicerone.exitTour",
+        "title": "Cicerone: Exit Tour"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cicerone",
+          "title": "Cicerone",
+          "icon": "media/cicerone.svg"
+        }
+      ]
+    },
+    "views": {
+      "cicerone": [
+        {
+          "id": "cicerone.sidebar",
+          "name": "Tour",
+          "type": "webview"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "cicerone.nextStep",
+        "key": "ctrl+alt+]",
+        "mac": "cmd+alt+]"
+      },
+      {
+        "command": "cicerone.previousStep",
+        "key": "ctrl+alt+[",
+        "mac": "cmd+alt+["
+      },
+      {
+        "command": "cicerone.nextTour",
+        "key": "ctrl+alt+shift+]",
+        "mac": "cmd+alt+shift+]"
+      },
+      {
+        "command": "cicerone.previousTour",
+        "key": "ctrl+alt+shift+[",
+        "mac": "cmd+alt+shift+["
+      }
+    ],
+    "menus": {
+      "comments/commentThread/title": [
+        {
+          "command": "cicerone.previousStep",
+          "when": "commentThread == cicerone.tourThread",
+          "group": "navigation@1"
+        },
+        {
+          "command": "cicerone.nextStep",
+          "when": "commentThread == cicerone.tourThread",
+          "group": "navigation@2"
+        },
+        {
+          "command": "cicerone.toggleAnnotationMode",
+          "when": "commentThread == cicerone.tourThread",
+          "group": "navigation@3"
+        },
+        {
+          "command": "cicerone.previousTour",
+          "when": "commentThread == cicerone.tourThread",
+          "group": "navigation@4"
+        },
+        {
+          "command": "cicerone.nextTour",
+          "when": "commentThread == cicerone.tourThread",
+          "group": "navigation@5"
+        },
+        {
+          "command": "cicerone.exitTour",
+          "when": "commentThread == cicerone.tourThread",
+          "group": "navigation@6"
+        },
+        {
+          "command": "cicerone.discardCurrentTour",
+          "when": "commentThread == cicerone.tourThread",
+          "group": "navigation@7"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "cicerone.replyInTour",
+          "when": "commentThread == cicerone.tourThread",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.4"
+  }
+}
