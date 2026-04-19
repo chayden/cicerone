@@ -67,7 +67,7 @@ Rules:
 `;
 }
 
-export function parseTourResponse(raw: string, cwd: string): TourBackendResponse {
+export function parseTourResponse(raw: string, cwd: string, log?: (message: string) => void): TourBackendResponse {
   const trimmed = raw.trim();
   if (!trimmed) {
     throw new Error('Agent returned an empty response.');
@@ -81,7 +81,7 @@ export function parseTourResponse(raw: string, cwd: string): TourBackendResponse
   }
 
   const steps = parsed.steps
-    .map((step, index) => normalizeStep(step, index, cwd))
+    .map((step, index) => normalizeStep(step, index, cwd, log))
     .filter((s): s is CiceroneStep => s !== undefined);
 
   if (steps.length === 0) {
@@ -97,9 +97,9 @@ export function parseTourResponse(raw: string, cwd: string): TourBackendResponse
 
 const VALID_TYPES = new Set(['concept', 'execution', 'tangent']);
 
-function normalizeStep(step: unknown, index: number, cwd: string): CiceroneStep | undefined {
+function normalizeStep(step: unknown, index: number, cwd: string, log?: (message: string) => void): CiceroneStep | undefined {
   if (!step || typeof step !== 'object') {
-    console.warn(`[Cicerone] Skipping invalid step at index ${index}: not an object.`);
+    log?.(`[Cicerone] Skipping invalid step at index ${index}: not an object.`);
     return undefined;
   }
 
@@ -115,7 +115,7 @@ function normalizeStep(step: unknown, index: number, cwd: string): CiceroneStep 
   const type = VALID_TYPES.has(rawType) ? rawType as CiceroneStep['type'] : undefined;
 
   if (!file || !title || !explanation) {
-    console.warn(`[Cicerone] Skipping incomplete step at index ${index}: ${JSON.stringify(candidate).slice(0, 200)}`);
+    log?.(`[Cicerone] Skipping incomplete step at index ${index}: ${JSON.stringify(candidate).slice(0, 200)}`);
     return undefined;
   }
 

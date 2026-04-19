@@ -18,7 +18,7 @@ async function runTest() {
     console.log('Tour generated:', tour.topic);
     console.log('Step count:', tour.steps.length);
     
-    const resolvedSteps = resolveStepLocations(tour.steps, cwd);
+    const resolvedSteps = resolveStepLocations(tour.steps, log);
     console.log('First step resolved line:', resolvedSteps[0].line);
     
     await session.dispose();
@@ -37,7 +37,7 @@ async function runTest() {
     console.log('Tour generated:', tour.topic);
     console.log('Step count:', tour.steps.length);
     
-    const resolvedSteps = resolveStepLocations(tour.steps, cwd);
+    const resolvedSteps = resolveStepLocations(tour.steps, log);
     console.log('First step resolved line:', resolvedSteps[0].line);
 
     await session.dispose();

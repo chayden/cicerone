@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { PiModelInfo } from './backend/modelList';
+import { ModelInfo } from './backend/modelList';
 import { CiceroneTour } from './types';
 
 interface SidebarState {
@@ -10,7 +10,7 @@ interface SidebarState {
   questionDraft: string;
   hasSession: boolean;
   currentModel: string;
-  availableModels: PiModelInfo[];
+  availableModels: ModelInfo[];
   isTourVisible: boolean;
   backendChoice: string;
 }
@@ -103,7 +103,7 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
     questionDraft: string,
     hasSession: boolean,
     currentModel: string,
-    availableModels: PiModelInfo[],
+    availableModels: ModelInfo[],
     isTourVisible: boolean,
     backendChoice: string
   ): void {

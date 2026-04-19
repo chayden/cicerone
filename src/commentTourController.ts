@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { CiceroneStep, CiceroneStepHighlight, CiceroneTour } from './types';
 
@@ -5,12 +6,14 @@ class CiceroneComment implements vscode.Comment {
   id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   label?: string | undefined;
   mode = vscode.CommentMode.Preview;
-  author = { name: '' };
+  author: vscode.CommentAuthorInformation;
   contextValue = 'cicerone.step';
   reactions?: vscode.CommentReaction[] | undefined;
   savedBody?: string | vscode.MarkdownString | undefined;
 
-  constructor(public body: string | vscode.MarkdownString) {}
+  constructor(public body: string | vscode.MarkdownString, iconPath: vscode.Uri) {
+    this.author = { name: 'Cicerone', iconPath };
+  }
 }
 
 export class CommentTourController implements vscode.Disposable {
@@ -20,9 +23,11 @@ export class CommentTourController implements vscode.Disposable {
   private readonly blockDecoration: vscode.TextEditorDecorationType;
   private readonly extraBlockDecoration: vscode.TextEditorDecorationType;
   private readonly statusBarItem: vscode.StatusBarItem;
+  private readonly authorIconPath: vscode.Uri;
 
   constructor() {
     this.controller = vscode.comments.createCommentController('cicerone-tour', 'Cicerone Tour');
+    this.authorIconPath = vscode.Uri.file(path.resolve(__dirname, '../media/cicerone.svg'));
     this.controller.options = {
       prompt: 'Dive deeper',
       placeHolder: 'Ask for a tangent, deeper explanation, or implementation detail…'
@@ -58,7 +63,7 @@ export class CommentTourController implements vscode.Disposable {
     this.extraThreads = [];
 
     this.currentThread = this.controller.createCommentThread(document.uri, range, [
-      new CiceroneComment(this.buildMarkdown(tour, step))
+      new CiceroneComment(this.buildMarkdown(step), this.authorIconPath)
     ]);
     this.currentThread.label = `Tour: ${tour.topic}`;
     this.currentThread.contextValue = 'cicerone.tourThread';
@@ -100,7 +105,7 @@ export class CommentTourController implements vscode.Disposable {
     this.statusBarItem.dispose();
   }
 
-  private buildMarkdown(tour: CiceroneTour, step: CiceroneStep): vscode.MarkdownString {
+  private buildMarkdown(step: CiceroneStep): vscode.MarkdownString {
     const markdown = new vscode.MarkdownString(undefined, true);
     markdown.isTrusted = true;
 
@@ -125,7 +130,7 @@ export class CommentTourController implements vscode.Disposable {
       const line = document.lineAt(lineIndex);
       const range = new vscode.Range(line.range.start, line.range.end);
       const thread = this.controller.createCommentThread(document.uri, range, [
-        new CiceroneComment(highlight.note)
+        new CiceroneComment(highlight.note, this.authorIconPath)
       ]);
       thread.label = 'Related highlight';
       thread.contextValue = 'cicerone.tourThread';

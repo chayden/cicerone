@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { AcpBackend } from './backend/acpBackend';
 import { PiRpcBackend } from './backend/piRpcBackend';
 import { resolveStepLocations } from './backend/lineResolver';
-import { listAvailableModels, PiModelInfo } from './backend/modelList';
+import { listAvailableModels, ModelInfo } from './backend/modelList';
 import { TourBackend, TourBackendSession } from './backend/types';
 import { CommentTourController } from './commentTourController';
 import { TourOutlineProvider } from './tourOutlineProvider';
@@ -23,10 +23,11 @@ let sidebarQuestionDraft = '';
 let isTourVisible = true;
 let currentModelSetting = '';
 let currentBackendChoice = 'pi-acp';
-let availableModels: PiModelInfo[] = [];
+let availableModels: ModelInfo[] = [];
 let supportsModelSelection = true;
 let workspaceState: vscode.Memento;
 let tourOutlineProvider: TourOutlineProvider;
+let modelRefreshRequestId = 0;
 
 export function activate(context: vscode.ExtensionContext): void {
   workspaceState = context.workspaceState;
@@ -71,31 +72,38 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('cicerone.setBackendChoice', async (choice: string) => {
       const configuration = vscode.workspace.getConfiguration('cicerone');
+      const configuredModel = configuration.get<string>('model', '').trim();
 
       if (choice === 'pi-rpc') {
         await configuration.update('backend', 'pi-rpc', vscode.ConfigurationTarget.Global);
+        if (!configuredModel || configuredModel === DEFAULT_KIRO_MODEL) {
+          await configuration.update('model', DEFAULT_PI_MODEL, vscode.ConfigurationTarget.Global);
+        }
       } else if (choice === 'kiro-cli') {
         await configuration.update('backend', 'acp', vscode.ConfigurationTarget.Global);
         await configuration.update('acpCommand', 'kiro-cli acp', vscode.ConfigurationTarget.Global);
-
-        const configuredModel = configuration.get<string>('model', DEFAULT_PI_MODEL).trim();
         if (!configuredModel || configuredModel === DEFAULT_PI_MODEL) {
           await configuration.update('model', DEFAULT_KIRO_MODEL, vscode.ConfigurationTarget.Global);
         }
       } else {
         await configuration.update('backend', 'acp', vscode.ConfigurationTarget.Global);
         await configuration.update('acpCommand', 'pi-acp', vscode.ConfigurationTarget.Global);
+        if (!configuredModel || configuredModel === DEFAULT_KIRO_MODEL) {
+          await configuration.update('model', DEFAULT_PI_MODEL, vscode.ConfigurationTarget.Global);
+        }
       }
 
+      availableModels = [];
       await disposeBackendSession();
       backend = createBackend();
+      syncTourOutline();
       await refreshAvailableModels();
       syncTourOutline();
     }),
 
     vscode.commands.registerCommand('cicerone.setModel', async (model: string) => {
       if (!supportsModelSelection) {
-        vscode.window.showInformationMessage('Model selection is only available for pi-backed sessions.');
+        vscode.window.showInformationMessage('Model selection is not available for the current backend.');
         return;
       }
 
@@ -150,7 +158,7 @@ export function activate(context: vscode.ExtensionContext): void {
           }
         );
 
-        const response = { ...rawResponse, steps: resolveStepLocations(rawResponse.steps, workspaceRoot) };
+        const response = { ...rawResponse, steps: resolveStepLocations(rawResponse.steps, message => outputChannel.appendLine(message)) };
 
         const activeTour = tourStack.getActiveTour();
         const tour = activeTour
@@ -394,7 +402,7 @@ async function startTour(question: string, options: { reuseSession: boolean }): 
       }
     );
 
-    const response = { ...rawResponse, steps: resolveStepLocations(rawResponse.steps, workspaceRoot) };
+    const response = { ...rawResponse, steps: resolveStepLocations(rawResponse.steps, message => outputChannel.appendLine(message)) };
 
     const tour = tourStack.initializeTour(response.topic, response.steps, {
       question,
@@ -439,17 +447,34 @@ async function setSidebarQuestionDraft(question: string): Promise<void> {
 }
 
 async function refreshAvailableModels(): Promise<void> {
+  const requestId = ++modelRefreshRequestId;
+  const backendChoice = currentBackendChoice;
+
   if (!supportsModelSelection) {
     availableModels = [];
     syncTourOutline();
     return;
   }
 
-  availableModels = await listAvailableModels(currentBackendChoice);
+  const models = await listAvailableModels(backendChoice, message => outputChannel.appendLine(message));
+  if (requestId !== modelRefreshRequestId || backendChoice !== currentBackendChoice) {
+    return;
+  }
+
+  availableModels = models;
   if (availableModels.length > 0) {
-    outputChannel.appendLine(`[Cicerone] Available models: ${availableModels.map(m => m.fullName).join(', ')}`);
+    outputChannel.appendLine(`[Cicerone] Available models for ${backendChoice}: ${availableModels.map(m => m.fullName).join(', ')}`);
   } else {
-    outputChannel.appendLine('[Cicerone] Could not detect available models (pi may not be installed).');
+    if (currentModelSetting) {
+      availableModels = [{
+        provider: 'configured',
+        modelId: currentModelSetting,
+        fullName: currentModelSetting
+      }];
+      outputChannel.appendLine(`[Cicerone] Could not detect available models for ${backendChoice}. Falling back to configured model: ${currentModelSetting}`);
+    } else {
+      outputChannel.appendLine(`[Cicerone] Could not detect available models for ${backendChoice}.`);
+    }
   }
   syncTourOutline();
 }

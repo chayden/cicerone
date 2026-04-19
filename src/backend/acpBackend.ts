@@ -146,7 +146,7 @@ class AcpBackendSession implements TourBackendSession {
       }
 
       this.log(`[AcpBackend] parsing response length=${answerBuffer.trim().length}`);
-      const response = parseTourResponse(answerBuffer, request.cwd);
+      const response = parseTourResponse(answerBuffer, request.cwd, this.log);
       this.log(`[AcpBackend] parsed topic="${response.topic}" steps=${response.steps.length}`);
       return response;
     } finally {

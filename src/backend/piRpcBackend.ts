@@ -106,7 +106,7 @@ class PiRpcBackendSession implements TourBackendSession {
       }
 
       this.log(`[PiRpcBackend] parsing response length=${answerBuffer.trim().length}`);
-      const response = parseTourResponse(answerBuffer, request.cwd);
+      const response = parseTourResponse(answerBuffer, request.cwd, this.log);
       this.log(`[PiRpcBackend] parsed topic="${response.topic}" steps=${response.steps.length}`);
       return response;
     } finally {
