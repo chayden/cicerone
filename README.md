@@ -7,7 +7,7 @@ A minimal VS Code extension scaffold for experimenting with collaborative code t
 - `TourStackManager` for main tours and tangents
 - `CommentTourController` using the VS Code comments API
 - Demo commands for a manual 3-step tour
-- `Ask pi for Code Tour` to answer repository questions as a guided walkthrough
+- `Ask for Code Tour` to answer repository questions as a guided walkthrough
 - Follow-up questions from the comment thread that spawn tangent tours
 - A dedicated Cicerone sidebar with a question box, tour controls, stack display, and clickable step cards
 - Line highlighting and status bar progress

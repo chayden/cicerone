@@ -11,8 +11,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:cicerone.startDemoTour",
-    "onCommand:cicerone.askPiTour",
+    "onCommand:cicerone.askTour",
     "onCommand:cicerone.replyInTour",
     "onCommand:cicerone.goToStep",
     "onCommand:cicerone.activateTourAt",
@@ -56,12 +55,8 @@
     },
     "commands": [
       {
-        "command": "cicerone.startDemoTour",
-        "title": "Cicerone: Start Demo Tour"
-      },
-      {
-        "command": "cicerone.askPiTour",
-        "title": "Cicerone: Ask pi for Code Tour"
+        "command": "cicerone.askTour",
+        "title": "Cicerone: Ask for Code Tour"
       },
       {
         "command": "cicerone.replyInTour",

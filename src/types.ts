@@ -1,5 +1,11 @@
 export type CiceroneAnnotationMode = 'terse' | 'detailed';
 
+export interface CiceroneStepHighlight {
+  line: number;
+  anchor?: string;
+  note: string;
+}
+
 export interface CiceroneStep {
   file: string;
   line: number;
@@ -7,6 +13,7 @@ export interface CiceroneStep {
   title: string;
   explanation: string;
   detailedExplanation?: string;
+  extraHighlights?: CiceroneStepHighlight[];
   type: 'concept' | 'execution' | 'tangent';
 }
 

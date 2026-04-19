@@ -21,6 +21,11 @@ export interface ResolvableStep {
   anchor?: string;
   title: string;
   explanation: string;
+  extraHighlights?: Array<{
+    line: number;
+    anchor?: string;
+    note: string;
+  }>;
 }
 
 interface ScoredLine {
@@ -35,11 +40,14 @@ interface ScoredLine {
  */
 export function resolveStepLocations<T extends ResolvableStep>(steps: T[], _cwd: string): T[] {
   return steps.map(step => {
-    const resolved = resolveBestLine(step);
-    if (resolved !== step.line) {
-      console.log(`[Cicerone] Resolved ${path.basename(step.file)}:${step.line} → ${resolved} (anchor=${step.anchor ?? 'none'}, "${step.title}")`);
+    const resolvedLine = resolveBestLine(step);
+    if (resolvedLine !== step.line) {
+      console.log(`[Cicerone] Resolved ${path.basename(step.file)}:${step.line} → ${resolvedLine} (anchor=${step.anchor ?? 'none'}, "${step.title}")`);
     }
-    return { ...step, line: resolved };
+
+    const resolvedStep = { ...step, line: resolvedLine };
+    const resolvedHighlights = resolveExtraHighlights(resolvedStep);
+    return resolvedHighlights ? { ...resolvedStep, extraHighlights: resolvedHighlights } : resolvedStep;
   });
 }
 
@@ -174,6 +182,73 @@ function extractSearchTokens(title: string, explanation: string): string[] {
   }
 
   return [...new Set([...titleTokens, ...tokens])];
+}
+
+function resolveExtraHighlights(step: ResolvableStep): ResolvableStep['extraHighlights'] {
+  if (!step.extraHighlights?.length) {
+    return undefined;
+  }
+
+  let content: string;
+  try {
+    content = fs.readFileSync(step.file, 'utf8');
+  } catch {
+    return step.extraHighlights;
+  }
+
+  const lines = content.split('\n');
+  const maxLine = lines.length;
+  const windowStart = Math.max(1, step.line);
+  const windowEnd = Math.min(maxLine, step.line + 25);
+
+  const resolved = step.extraHighlights
+    .map(highlight => {
+      let line = Math.max(1, Math.min(highlight.line, maxLine));
+
+      if (highlight.anchor) {
+        const preferred = findAnchorLineInWindow(lines, highlight.anchor, line, windowStart, windowEnd);
+        if (preferred !== undefined) {
+          line = preferred;
+        } else {
+          const fallback = findAnchorLine(lines, highlight.anchor, line);
+          if (fallback !== undefined) {
+            line = fallback;
+          }
+        }
+      }
+
+      return { ...highlight, line };
+    })
+    .filter(highlight => highlight.line >= windowStart && highlight.line <= windowEnd);
+
+  return resolved.length ? resolved : undefined;
+}
+
+function findAnchorLineInWindow(lines: string[], anchor: string, originalLine: number, startLine: number, endLine: number): number | undefined {
+  const anchorLower = anchor.toLowerCase();
+  const matches: number[] = [];
+
+  for (let i = startLine - 1; i < Math.min(lines.length, endLine); i++) {
+    if (lines[i].toLowerCase().includes(anchorLower)) {
+      matches.push(i + 1);
+    }
+  }
+
+  if (!matches.length) {
+    return undefined;
+  }
+
+  let best = matches[0];
+  let bestDist = Math.abs(best - originalLine);
+  for (let i = 1; i < matches.length; i++) {
+    const dist = Math.abs(matches[i] - originalLine);
+    if (dist < bestDist) {
+      best = matches[i];
+      bestDist = dist;
+    }
+  }
+
+  return best;
 }
 
 function scoreLines(lines: string[], tokens: string[]): ScoredLine[] {

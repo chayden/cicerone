@@ -1,5 +1,5 @@
 import { PiRpcBackend } from './src/backend/piRpcBackend';
-import { PiAcpBackend } from './src/backend/piAcpBackend';
+import { AcpBackend } from './src/backend/acpBackend';
 import { resolveStepLocations } from './src/backend/lineResolver';
 
 async function runTest() {
@@ -26,9 +26,9 @@ async function runTest() {
     console.error('PiRpcBackend failed:', err);
   }
 
-  console.log('\n--- Testing PiAcpBackend ---');
+  console.log('\n--- Testing AcpBackend (pi-acp default) ---');
   try {
-    const backend = new PiAcpBackend(log, undefined, "google-antigravity/gemini-3-flash");
+    const backend = new AcpBackend(log, undefined, "google-antigravity/gemini-3-flash");
     const session = await backend.createSession(cwd);
     const tour = await session.generateTour({
       question,
@@ -42,7 +42,7 @@ async function runTest() {
 
     await session.dispose();
   } catch (err) {
-    console.error('PiAcpBackend failed:', err);
+    console.error('AcpBackend failed:', err);
   }
 }
 

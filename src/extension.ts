@@ -41,23 +41,7 @@ export function activate(context: vscode.ExtensionContext): void {
   refreshAvailableModels();
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('cicerone.startDemoTour', async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showErrorMessage('Open a file before starting the Cicerone demo tour.');
-        return;
-      }
-
-      const steps = createDemoSteps(editor.document.uri, editor.document.lineCount);
-      const tour = tourStack.initializeTour('Demo Tour', steps, {
-        answerSummary: 'This is a static demo tour used to validate the tour UI before wiring in pi.'
-      });
-      await renderActiveStep(tourStack.getActiveStep());
-      syncTourOutline();
-      vscode.window.showInformationMessage(`Started Cicerone demo tour: ${tour.topic}`);
-    }),
-
-    vscode.commands.registerCommand('cicerone.askPiTour', async () => {
+    vscode.commands.registerCommand('cicerone.askTour', async () => {
       const question = await vscode.window.showInputBox({
         prompt: 'Ask a question about the codebase',
         placeHolder: 'How does tour state flow through the extension?'
@@ -68,16 +52,16 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       await setSidebarQuestionDraft(question.trim());
-      await startPiTour(question.trim(), { reuseSession: false });
+      await startTour(question.trim(), { reuseSession: false });
     }),
 
-    vscode.commands.registerCommand('cicerone.askPiTourWithQuestion', async (question: string) => {
+    vscode.commands.registerCommand('cicerone.askTourWithQuestion', async (question: string) => {
       if (!question?.trim()) {
         return;
       }
 
       setSidebarQuestionDraft(question.trim());
-      await startPiTour(question.trim(), { reuseSession: false });
+      await startTour(question.trim(), { reuseSession: false });
     }),
 
     vscode.commands.registerCommand('cicerone.setSidebarQuestionDraft', async (question: string) => {
@@ -322,41 +306,6 @@ async function renderActiveStep(step: CiceroneStep | undefined): Promise<void> {
   await commentController.renderStep(activeTour, step);
 }
 
-function createDemoSteps(uri: vscode.Uri, lineCount: number): CiceroneStep[] {
-  const safeLine = (preferred: number): number => Math.max(1, Math.min(preferred, Math.max(1, lineCount)));
-  const file = uri.fsPath;
-
-  return [
-    {
-      file,
-      line: safeLine(1),
-      title: 'Welcome to the file',
-      explanation: 'This opening step establishes why the file matters before diving deeper.',
-      detailedExplanation:
-        'We start here to orient the visitor. This is the opening scene where Cicerone explains **why this file matters** before diving into details.',
-      type: 'concept'
-    },
-    {
-      file,
-      line: safeLine(Math.ceil(lineCount / 2)),
-      title: 'The middle of the story',
-      explanation: 'This shows the core tour mechanic: move, highlight, and narrate the code location.',
-      detailedExplanation:
-        'This step demonstrates the main tour mechanic: move the editor, highlight a block, and narrate the purpose of the code in Markdown.',
-      type: 'execution'
-    },
-    {
-      file,
-      line: safeLine(lineCount),
-      title: 'Wrap-up and next questions',
-      explanation: 'This closes the walkthrough and leaves room for follow-up questions.',
-      detailedExplanation:
-        'We end at the bottom to show how a tour can conclude while leaving space for follow-up questions in the comment thread.',
-      type: 'concept'
-    }
-  ];
-}
-
 function getWorkspaceRoot(uri?: vscode.Uri): string | undefined {
   if (uri) {
     const folder = vscode.workspace.getWorkspaceFolder(uri);
@@ -417,7 +366,7 @@ function createBackend(): TourBackend {
   return acpBackend;
 }
 
-async function startPiTour(question: string, options: { reuseSession: boolean }): Promise<void> {
+async function startTour(question: string, options: { reuseSession: boolean }): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   const workspaceRoot = getWorkspaceRoot(editor?.document.uri);
   if (!workspaceRoot) {
@@ -426,7 +375,7 @@ async function startPiTour(question: string, options: { reuseSession: boolean })
   }
 
   try {
-    outputChannel.appendLine(`[Cicerone] askPiTour question=${question}`);
+    outputChannel.appendLine(`[Cicerone] askTour question=${question}`);
     const rawResponse = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -457,7 +406,7 @@ async function startPiTour(question: string, options: { reuseSession: boolean })
     vscode.window.showInformationMessage(`Started Cicerone tour: ${tour.topic}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    outputChannel.appendLine(`[Cicerone] askPiTour error=${message}`);
+    outputChannel.appendLine(`[Cicerone] askTour error=${message}`);
     outputChannel.show(true);
     vscode.window.showErrorMessage(`Cicerone could not generate a ${backendLabel} tour: ${message}`);
   }

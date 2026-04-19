@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CiceroneStep, CiceroneTour } from './types';
+import { CiceroneStep, CiceroneStepHighlight, CiceroneTour } from './types';
 
 class CiceroneComment implements vscode.Comment {
   id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -16,7 +16,9 @@ class CiceroneComment implements vscode.Comment {
 export class CommentTourController implements vscode.Disposable {
   private readonly controller: vscode.CommentController;
   private currentThread?: vscode.CommentThread;
+  private extraThreads: vscode.CommentThread[] = [];
   private readonly blockDecoration: vscode.TextEditorDecorationType;
+  private readonly extraBlockDecoration: vscode.TextEditorDecorationType;
   private readonly statusBarItem: vscode.StatusBarItem;
 
   constructor() {
@@ -33,6 +35,14 @@ export class CommentTourController implements vscode.Disposable {
       border: '1px solid',
       borderColor: new vscode.ThemeColor('editor.wordHighlightStrongBorder')
     });
+    this.extraBlockDecoration = vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      backgroundColor: new vscode.ThemeColor('editor.wordHighlightTextBackground'),
+      overviewRulerColor: new vscode.ThemeColor('editor.wordHighlightTextBorder'),
+      overviewRulerLane: vscode.OverviewRulerLane.Right,
+      border: '1px solid',
+      borderColor: new vscode.ThemeColor('editor.wordHighlightTextBorder')
+    });
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   }
 
@@ -44,6 +54,9 @@ export class CommentTourController implements vscode.Disposable {
     const range = new vscode.Range(line.range.start, line.range.end);
 
     this.currentThread?.dispose();
+    this.extraThreads.forEach(thread => thread.dispose());
+    this.extraThreads = [];
+
     this.currentThread = this.controller.createCommentThread(document.uri, range, [
       new CiceroneComment(this.buildMarkdown(tour, step))
     ]);
@@ -52,9 +65,12 @@ export class CommentTourController implements vscode.Disposable {
     this.currentThread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
     this.currentThread.canReply = true;
 
+    const extraRanges = this.renderExtraHighlights(document, step.extraHighlights);
+
     editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
     editor.selection = new vscode.Selection(range.start, range.start);
     editor.setDecorations(this.blockDecoration, [range]);
+    editor.setDecorations(this.extraBlockDecoration, extraRanges);
 
     this.statusBarItem.text = `$(book) Cicerone: ${tour.currentStepIndex + 1}/${tour.steps.length}`;
     this.statusBarItem.tooltip = `${tour.topic} — ${step.title}`;
@@ -64,10 +80,13 @@ export class CommentTourController implements vscode.Disposable {
   clear(): void {
     this.currentThread?.dispose();
     this.currentThread = undefined;
+    this.extraThreads.forEach(thread => thread.dispose());
+    this.extraThreads = [];
 
     const editor = vscode.window.activeTextEditor;
     if (editor) {
       editor.setDecorations(this.blockDecoration, []);
+      editor.setDecorations(this.extraBlockDecoration, []);
     }
 
     this.statusBarItem.hide();
@@ -77,6 +96,7 @@ export class CommentTourController implements vscode.Disposable {
     this.clear();
     this.controller.dispose();
     this.blockDecoration.dispose();
+    this.extraBlockDecoration.dispose();
     this.statusBarItem.dispose();
   }
 
@@ -85,7 +105,7 @@ export class CommentTourController implements vscode.Disposable {
     markdown.isTrusted = true;
 
     // Use brief explanation as the primary intro
-    markdown.appendMarkdown(`${step.explanation}\n\n`);
+    markdown.appendMarkdown(`**${escapeMarkdown(step.explanation)}**\n\n`);
 
     // Use detailed explanation (usually 3-ish sentences) as the body
     if (step.detailedExplanation && step.detailedExplanation !== step.explanation) {
@@ -95,6 +115,27 @@ export class CommentTourController implements vscode.Disposable {
     return markdown;
   }
 
+  private renderExtraHighlights(document: vscode.TextDocument, highlights?: CiceroneStepHighlight[]): vscode.Range[] {
+    if (!highlights?.length) {
+      return [];
+    }
+
+    return highlights.map(highlight => {
+      const lineIndex = this.clampLine(highlight.line - 1, document.lineCount);
+      const line = document.lineAt(lineIndex);
+      const range = new vscode.Range(line.range.start, line.range.end);
+      const thread = this.controller.createCommentThread(document.uri, range, [
+        new CiceroneComment(highlight.note)
+      ]);
+      thread.label = 'Related highlight';
+      thread.contextValue = 'cicerone.tourThread';
+      thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
+      thread.canReply = false;
+      this.extraThreads.push(thread);
+      return range;
+    });
+  }
+
   private clampLine(line: number, lineCount: number): number {
     if (lineCount <= 0) {
       return 0;
@@ -102,4 +143,8 @@ export class CommentTourController implements vscode.Disposable {
 
     return Math.max(0, Math.min(line, lineCount - 1));
   }
+}
+
+function escapeMarkdown(value: string): string {
+  return value.replace(/([\\`*_{}\[\]()#+\-.!|>])/g, '\\$1');
 }

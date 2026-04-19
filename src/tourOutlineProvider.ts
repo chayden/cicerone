@@ -69,7 +69,7 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
           break;
         case 'startTour':
           if (typeof message.question === 'string') {
-            void vscode.commands.executeCommand('cicerone.askPiTourWithQuestion', message.question);
+            void vscode.commands.executeCommand('cicerone.askTourWithQuestion', message.question);
           }
           break;
         case 'questionDraftChanged':
