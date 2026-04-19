@@ -5,6 +5,10 @@
   "version": "0.0.1",
   "publisher": "chayden",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chayden/cicerone.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },

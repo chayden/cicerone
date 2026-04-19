@@ -1,0 +1,10 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+.git/**
+**/*.map
+**/*.tsbuildinfo
+tsconfig.json
+smoke-test.ts
+node_modules/**

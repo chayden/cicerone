@@ -24,7 +24,7 @@ To build the extension into an installable `.vsix` package:
 
 ```bash
 npm install
-npx vsce package
+npx @vscode/vsce package
 ```
 
 This will generate a file like `cicerone-0.0.1.vsix`. To install it in VS Code:
