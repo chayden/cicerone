@@ -4,6 +4,7 @@
   "description": "AI-powered collaborative code tours for VS Code.",
   "version": "0.0.1",
   "publisher": "chayden",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
   },
