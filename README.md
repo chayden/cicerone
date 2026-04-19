@@ -1,6 +1,8 @@
 # Cicerone
 
-A minimal VS Code extension scaffold for experimenting with collaborative code tours, now with ACP-compatible agent backends like pi and Kiro.
+Cicerone is an AI-powered VS Code extension designed to help developers perform deep dives into unfamiliar codebases and rapidly build understanding. 
+
+Instead of just reading code or relying on standard chat interfaces, Cicerone generates **interactive, guided code tours** directly within your editor. By integrating with ACP-compatible agents (like `pi` and `Kiro`), Cicerone answers your architectural questions by navigating you through the actual files, lines, and symbols that matter—complete with contextual notes, follow-up tangents, and session summaries.
 
 ## What is included
 
