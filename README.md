@@ -18,19 +18,33 @@ Instead of just reading code or relying on standard chat interfaces, Cicerone ge
 - VS Code
 - npm
 
-## Install & Build
+## Package & Install
+
+To build the extension into an installable `.vsix` package:
 
 ```bash
 npm install
-npm run compile
+npx vsce package
 ```
 
-## Run the Extension
+This will generate a file like `cicerone-0.0.1.vsix`. To install it in VS Code:
+
+1. Open the **Extensions** view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
+2. Click the `...` menu in the top right of the Extensions view.
+3. Select **Install from VSIX...**
+4. Choose the generated `.vsix` file.
+
+*(Alternatively, you can install via the command line: `code --install-extension cicerone-0.0.1.vsix`)*
+
+## Local Development
+
+If you want to run or debug the extension from source:
 
 1. Open this folder in VS Code.
-2. Press `F5` to launch the Extension Development Host.
-3. In the new VS Code window, open any code file inside a workspace.
-4. In the **Cicerone Sidebar** (Activity Bar), select your backend/model, ask a question, and click **Start**.
+2. Run `npm install` and `npm run compile`.
+3. Press `F5` to launch the Extension Development Host.
+4. In the new VS Code window, open any code file inside a workspace.
+5. In the **Cicerone Sidebar** (Activity Bar), select your backend/model, ask a question, and click **Start**.
 
 ### Keyboard Shortcuts
 
