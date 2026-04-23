@@ -189,7 +189,7 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
                   ? '<span class="stackSpinner" aria-hidden="true"></span>'
                   : tour.status === 'error'
                   ? '<span class="stackStatusIcon">!</span>'
-                  : '<span class="stackStatusIcon">●</span>';
+                  : '';
                 const subtitle = tour.status === 'loading'
                   ? 'Generating…'
                   : tour.status === 'error'
@@ -467,29 +467,25 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
     <div class="composerMeta">
       <div class="composerTitle">Tour Notes</div>
       <div class="badges">
-        <button id="createSummaryButton" class="controlButton" title="Generate a summary from tours and notes" ${isGeneratingSummary ? 'disabled' : ''}>${isGeneratingSummary ? 'Summarizing…' : 'Summarize'}</button>
         <button id="copyNotesButton" class="controlButton" title="Copy notes to clipboard">Copy</button>
       </div>
     </div>
     <textarea id="notesInput" class="questionInput notesInput" placeholder="Saved tour notes will appear here…">${escapeHtml(notes)}</textarea>
     <div class="sessionLine">Use the <code>Tangent / Note</code> toggle in the tour comment to decide whether the reply opens a tangent or saves a note.</div>
   </div>
-  ${(sidebarSummary || isGeneratingSummary) ? `
   <div class="composer notesComposer">
     <div class="composerMeta">
       <div class="composerTitle">Session Summary</div>
       <div class="badges">
-        ${sidebarSummary ? `
-        <button id="clearSummaryButton" class="controlButton subtle danger" title="Clear summary">Clear</button>
-        <button id="copySummaryButton" class="controlButton" title="Copy summary">Copy</button>
-        ` : ''}
+        <button id="createSummaryButton" class="controlButton" title="Generate a session summary" ${isGeneratingSummary ? 'disabled' : ''}>${isGeneratingSummary ? 'Generating…' : 'Generate'}</button>
+        <button id="copySummaryButton" class="controlButton" title="Copy summary" ${!sidebarSummary ? 'disabled' : ''}>Copy</button>
       </div>
     </div>
     ${isGeneratingSummary 
       ? `<div class="empty" style="padding:12px;">Generating summary... <span class="stackSpinner" style="display:inline-block; vertical-align:middle; margin-left:4px;"></span></div>`
-      : `<textarea id="summaryInput" class="questionInput notesInput" placeholder="Summary...">${escapeHtml(sidebarSummary)}</textarea>`
+      : `<textarea id="summaryInput" class="questionInput notesInput" placeholder="Generate a summary of the full session...">${escapeHtml(sidebarSummary)}</textarea>`
     }
-  </div>` : ''}
+  </div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const questionInput = document.getElementById('questionInput');
