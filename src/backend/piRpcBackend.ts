@@ -114,6 +114,40 @@ class PiRpcBackendSession implements TourBackendSession {
     }
   }
 
+  async generateText(prompt: string): Promise<string> {
+    if (this.disposed) {
+      throw new Error('pi RPC session has been disposed.');
+    }
+    if (this.busy) {
+      throw new Error('pi RPC session is busy.');
+    }
+
+    this.busy = true;
+    let answerBuffer = '';
+    const id = `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    try {
+      this.log(`[PiRpcBackend] generateText prompt length=${prompt.length}`);
+      const accepted = this.waitForResponse(id);
+      this.child.stdin.write(`${JSON.stringify({ id, type: 'prompt', message: prompt })}\n`);
+      await accepted;
+
+      while (true) {
+        const event = await this.nextEvent();
+        if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
+          answerBuffer += event.assistantMessageEvent.delta || '';
+        }
+        if (event.type === 'agent_end') {
+          break;
+        }
+      }
+
+      return answerBuffer.trim();
+    } finally {
+      this.busy = false;
+    }
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;

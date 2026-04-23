@@ -21,6 +21,7 @@ export interface TourBackendResponse {
 
 export interface TourBackendSession {
   generateTour(request: TourBackendRequest): Promise<TourBackendResponse>;
+  generateText(prompt: string): Promise<string>;
   dispose(): Promise<void> | void;
 }
 

@@ -154,6 +154,40 @@ class AcpBackendSession implements TourBackendSession {
     }
   }
 
+  async generateText(prompt: string): Promise<string> {
+    if (this.disposed) {
+      throw new Error('ACP session has been disposed.');
+    }
+    if (this.busy) {
+      throw new Error('ACP session is busy.');
+    }
+
+    this.busy = true;
+    let answerBuffer = '';
+
+    try {
+      this.log(`[AcpBackend] generateText prompt length=${prompt.length}`);
+      await this.requestRpc('session/prompt', {
+        sessionId: this.sessionId,
+        prompt: [{ type: 'text', text: prompt }]
+      });
+
+      while (this.updates.length > 0) {
+        const event = this.updates.shift()!;
+        const update = event.params?.update;
+        if (event.params?.sessionId === this.sessionId && update?.sessionUpdate === 'agent_message_chunk') {
+          if (update.content?.type === 'text') {
+            answerBuffer += update.content.text || '';
+          }
+        }
+      }
+
+      return answerBuffer.trim();
+    } finally {
+      this.busy = false;
+    }
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;

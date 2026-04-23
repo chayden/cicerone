@@ -29,6 +29,7 @@ Schema:
       "file": string,
       "line": number,
       "anchor": string,
+      "authorName": string,
       "title": string,
       "explanation": string,
       "detailedExplanation": string,
@@ -36,6 +37,7 @@ Schema:
         {
           "line": number,
           "anchor": string,
+          "authorName": string,
           "note": string
         }
       ],
@@ -51,11 +53,13 @@ Rules:
 - Use 1-based line numbers.
 - Use repository-relative paths if convenient.
 - **anchor** must be the exact function name, variable name, class name, or symbol at the code location the step describes. This is used to locate the precise line in the file.
+- **authorName** must be a snappy, pithy, or slightly snarky 2-5 word phrase (under 30 characters) representing the "voice" or "attitude" of this specific comment (e.g. "Captain Obvious", "Performance Police", "The Ghost of Tech Debt").
 - answerSummary should directly answer the user's question in markdown, briefly.
 - explanation must be terse but complete: 1 to 3 sentences, focused on what this location contributes.
 - detailedExplanation must be a fuller markdown explanation for the same step, with more specifics.
 - You may optionally include "extraHighlights" for a step when there are 1 to 3 nearby lines worth calling out with very short notes.
 - Each extraHighlights note should be brief: usually 1 to 2 lines, focused on a local detail that supports the main step.
+- Each extraHighlights item also requires an **authorName**, just like the main step.
 - extraHighlights should usually point to lines in the same file and typically within about the next 20 lines after the main step's line.
 - Use extraHighlights sparingly; only include them when they make the walkthrough clearer.
 - The explanation will be shown to the user as a highlight/note directly on the code, so do not paste the code at that location back into the response unless quoting a tiny fragment is genuinely necessary.
@@ -107,6 +111,7 @@ function normalizeStep(step: unknown, index: number, cwd: string, log?: (message
   const file = typeof candidate.file === 'string' && candidate.file.trim() ? candidate.file.trim() : undefined;
   const line = typeof candidate.line === 'number' && candidate.line >= 1 ? Math.floor(candidate.line) : undefined;
   const anchor = typeof candidate.anchor === 'string' && candidate.anchor.trim() ? candidate.anchor.trim() : undefined;
+  const authorName = typeof candidate.authorName === 'string' && candidate.authorName.trim() ? candidate.authorName.trim() : undefined;
   const title = typeof candidate.title === 'string' && candidate.title.trim() ? candidate.title.trim() : undefined;
   const explanation = typeof candidate.explanation === 'string' && candidate.explanation.trim() ? candidate.explanation.trim() : undefined;
   const detailedExplanation = typeof candidate.detailedExplanation === 'string' && candidate.detailedExplanation.trim() ? candidate.detailedExplanation.trim() : explanation;
@@ -123,6 +128,7 @@ function normalizeStep(step: unknown, index: number, cwd: string, log?: (message
     file: resolveFilePath(file, cwd),
     line: line ?? 1,
     anchor,
+    authorName,
     title,
     explanation,
     detailedExplanation: detailedExplanation || explanation,
@@ -145,13 +151,14 @@ function normalizeHighlights(value: unknown): CiceroneStepHighlight[] | undefine
       const candidate = entry as Record<string, unknown>;
       const line = typeof candidate.line === 'number' && candidate.line >= 1 ? Math.floor(candidate.line) : undefined;
       const anchor = typeof candidate.anchor === 'string' && candidate.anchor.trim() ? candidate.anchor.trim() : undefined;
+      const authorName = typeof candidate.authorName === 'string' && candidate.authorName.trim() ? candidate.authorName.trim() : undefined;
       const note = typeof candidate.note === 'string' && candidate.note.trim() ? candidate.note.trim() : undefined;
 
       if (!line || !note) {
         return undefined;
       }
 
-      return { line, anchor, note };
+      return { line, anchor, authorName, note };
     })
     .filter((highlight): highlight is CiceroneStepHighlight => highlight !== undefined)
     .slice(0, 3);
