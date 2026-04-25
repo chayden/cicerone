@@ -67,12 +67,10 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
         case 'toggleAnnotationMode':
           void vscode.commands.executeCommand('cicerone.toggleAnnotationMode');
           break;
-        case 'exitTour':
-          void vscode.commands.executeCommand('cicerone.exitTour');
+        case 'endTour':
+          void vscode.commands.executeCommand('cicerone.endTour');
           break;
-        case 'discardCurrentTour':
-          void vscode.commands.executeCommand('cicerone.discardCurrentTour');
-          break;
+
         case 'startTour':
           if (typeof message.question === 'string') {
             void vscode.commands.executeCommand('cicerone.askTourWithQuestion', message.question);
@@ -173,6 +171,10 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
       : '<span class="sessionDot inactive" title="No active session"></span>';
     const sessionLabel = hasSession ? 'Session active' : 'No session';
 
+    const toggleTourBtn = tourStack.length
+      ? `<div style="margin-bottom:12px;"><button class="controlButton subtle dangerBg" data-action="toggleTourVisibility" style="width:100%;text-align:center;">${isTourVisible ? 'Disable' : 'Enable'} Cicerone Tours</button></div>`
+      : '';
+
     const stackHtml = tourStack.length
       ? `
         <div class="stackSection">
@@ -213,8 +215,6 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
 
     const contentHtml = !activeTour
       ? `<div class="empty">Ask a question above to generate a guided tour of the codebase.</div>`
-      : !isTourVisible
-      ? `<div class="empty">Tour hidden. <button class="linkButton" data-action="toggleTourVisibility">Show</button></div>`
       : `
         <div class="headerCard">
           <div class="topicRow">
@@ -233,10 +233,10 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
             <button class="controlButton${hasPrev ? '' : ' disabled'}" data-action="previousStep" ${hasPrev ? '' : 'disabled'} title="Previous step">◂ Prev</button>
             <button class="controlButton${hasNext ? '' : ' disabled'}" data-action="nextStep" ${hasNext ? '' : 'disabled'} title="Next step">Next ▸</button>
             <button class="controlButton" data-action="toggleAnnotationMode" title="Toggle annotation detail">Detail</button>
-            <button class="controlButton subtle" data-action="exitTour" title="Exit current tour">Exit</button>
-            <button class="controlButton subtle danger" data-action="discardCurrentTour" title="Discard current tour">Drop</button>
+            <button class="controlButton subtle danger dangerBg" data-action="endTour" title="End current tour">End Tour</button>
           </div>
         </div>
+        ${isTourVisible ? `
         <div class="sectionTitle">Steps</div>
         <div class="steps">
           ${activeTour.steps
@@ -262,7 +262,7 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
               `;
             })
             .join('')}
-        </div>`;
+        </div>` : ''}`;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -333,6 +333,8 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
     .controlButton.subtle:hover:not(.disabled) { background: var(--vscode-list-hoverBackground); }
     .controlButton.disabled { opacity: .4; cursor: default; }
     .danger { color: var(--vscode-errorForeground) !important; }
+    .dangerBg { background: color-mix(in srgb, var(--vscode-errorForeground) 12%, var(--vscode-editorWidget-background)) !important; border-color: color-mix(in srgb, var(--vscode-errorForeground) 30%, var(--vscode-panel-border)) !important; }
+    .dangerBg:hover:not(.disabled) { background: color-mix(in srgb, var(--vscode-errorForeground) 20%, var(--vscode-editorWidget-background)) !important; }
     .stackSection { padding: 12px; margin-bottom: 12px; }
     .stackList { display: flex; flex-direction: column; gap: 8px; }
     .stackRow {
@@ -443,12 +445,12 @@ export class TourOutlineProvider implements vscode.WebviewViewProvider {
   </style>
 </head>
 <body>
+  ${toggleTourBtn}
   ${stackHtml}
   <div class="composer">
     <div class="composerMeta">
       <div class="composerTitle">Ask Cicerone</div>
       <div class="badges">
-        <button class="visibilityToggle" data-action="toggleTourVisibility" title="${isTourVisible ? 'Hide tour' : 'Show tour'}">${isTourVisible ? '👁' : '👁‍🗨'}</button>
         <div class="backendBadge">${escapeHtml(backendLabel)}</div>
       </div>
     </div>

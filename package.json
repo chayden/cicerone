@@ -21,13 +21,12 @@
     "onCommand:cicerone.goToStep",
     "onCommand:cicerone.activateTourAt",
     "onCommand:cicerone.discardTourAt",
-    "onCommand:cicerone.discardCurrentTour",
     "onCommand:cicerone.toggleAnnotationMode",
     "onCommand:cicerone.nextStep",
     "onCommand:cicerone.previousStep",
     "onCommand:cicerone.nextTour",
     "onCommand:cicerone.previousTour",
-    "onCommand:cicerone.exitTour",
+    "onCommand:cicerone.endTour",
     "onView:cicerone.sidebar"
   ],
   "main": "./out/extension.js",
@@ -80,8 +79,8 @@
         "title": "Cicerone: Discard Tour in Stack"
       },
       {
-        "command": "cicerone.discardCurrentTour",
-        "title": "Cicerone: Discard Current Tour"
+        "command": "cicerone.endTour",
+        "title": "Cicerone: End Tour"
       },
       {
         "command": "cicerone.toggleAnnotationMode",
@@ -102,10 +101,6 @@
       {
         "command": "cicerone.previousTour",
         "title": "Cicerone: Previous Tour"
-      },
-      {
-        "command": "cicerone.exitTour",
-        "title": "Cicerone: Exit Tour"
       }
     ],
     "viewsContainers": {
@@ -161,29 +156,9 @@
           "group": "navigation@2"
         },
         {
-          "command": "cicerone.toggleAnnotationMode",
+          "command": "cicerone.toggleTourVisibility",
           "when": "commentThread == cicerone.tourThread",
           "group": "navigation@3"
-        },
-        {
-          "command": "cicerone.previousTour",
-          "when": "commentThread == cicerone.tourThread",
-          "group": "navigation@4"
-        },
-        {
-          "command": "cicerone.nextTour",
-          "when": "commentThread == cicerone.tourThread",
-          "group": "navigation@5"
-        },
-        {
-          "command": "cicerone.exitTour",
-          "when": "commentThread == cicerone.tourThread",
-          "group": "navigation@6"
-        },
-        {
-          "command": "cicerone.discardCurrentTour",
-          "when": "commentThread == cicerone.tourThread",
-          "group": "navigation@7"
         }
       ],
       "comments/commentThread/context": [

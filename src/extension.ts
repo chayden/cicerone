@@ -244,8 +244,13 @@ Do not output JSON, just output the markdown summary directly.`;
       syncTourOutline();
     }),
 
-    vscode.commands.registerCommand('cicerone.toggleTourVisibility', () => {
+    vscode.commands.registerCommand('cicerone.toggleTourVisibility', async () => {
       isTourVisible = !isTourVisible;
+      if (isTourVisible) {
+        await renderActiveStep(tourStack.getActiveStep());
+      } else {
+        commentController.clear();
+      }
       syncTourOutline();
     }),
 
@@ -321,6 +326,7 @@ Do not output JSON, just output the markdown summary directly.`;
           const tour = tourStack.activateTourById(pendingTour.id);
           if (tour) {
             await renderActiveStep(tour.steps[tour.currentStepIndex]);
+            syncTourOutline();
           }
         }
         vscode.window.showInformationMessage(`Started Cicerone tangent: ${response.topic}`);
@@ -431,14 +437,7 @@ Do not output JSON, just output the markdown summary directly.`;
       await renderActiveStep(result.activeTour.steps[result.activeTour.currentStepIndex]);
     }),
 
-    vscode.commands.registerCommand('cicerone.discardCurrentTour', async () => {
-      const activeIndex = tourStack.getStackDepth() - 1;
-      if (activeIndex >= 0) {
-        await vscode.commands.executeCommand('cicerone.discardTourAt', activeIndex);
-      }
-    }),
-
-    vscode.commands.registerCommand('cicerone.exitTour', async () => {
+    vscode.commands.registerCommand('cicerone.endTour', async () => {
       const previousTour = tourStack.getActiveTour();
       tourStack.concludeJourney();
       const activeTour = tourStack.getActiveTour();
@@ -571,6 +570,7 @@ async function startTour(question: string, _options: { reuseSession: boolean }):
       const tour = tourStack.activateTourById(pendingTour.id);
       if (tour) {
         await renderActiveStep(tour.steps[tour.currentStepIndex]);
+        syncTourOutline();
       }
     }
     vscode.window.showInformationMessage(`Started Cicerone tour: ${response.topic}`);
